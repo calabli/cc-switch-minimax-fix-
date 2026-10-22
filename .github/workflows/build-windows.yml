@@ -37,6 +37,8 @@ jobs:
 
       - name: Apply MiniMax desktop fix
         run: |
+          python -c "from pathlib import Path; paths = ['../fix/minimax-desktop-model.patch', 'src-tauri/src/services/session_usage_mcode.rs']; [Path(p).write_bytes(Path(p).read_bytes().replace(b'\r\n', b'\n')) for p in paths]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git apply --check ../fix/minimax-desktop-model.patch
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git apply ../fix/minimax-desktop-model.patch
