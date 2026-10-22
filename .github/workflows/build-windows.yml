@@ -1,0 +1,92 @@
+name: Build MiniMax fix for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-windows.yml'
+      - 'minimax-desktop-model.patch'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v6
+        with:
+          path: fix
+          persist-credentials: false
+
+      - name: Checkout official CC Switch 4.0.18 source
+        uses: actions/checkout@v6
+        with:
+          repository: farion1231/cc-switch
+          ref: v4.0.18
+          path: source
+          persist-credentials: false
+
+      - name: Apply MiniMax desktop fix
+        run: |
+          git apply --check ../fix/minimax-desktop-model.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git apply ../fix/minimax-desktop-model.patch
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Read pinned Rust version
+        id: rust
+        run: |
+          $taskMatch = Select-String -Path rust-toolchain.toml -Pattern '^channel\s*=\s*"([^"]+)"'
+          if (-not $taskMatch) { throw 'Pinned Rust version not found' }
+          "channel=$($taskMatch.Matches[0].Groups[1].Value)" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: source/src-tauri -> target
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          corepack install
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend for Rust tests
+        run: pnpm build:renderer
+
+      - name: Run MiniMax usage regression tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib session_usage_mcode
+
+      - name: Build Windows executable
+        run: pnpm tauri build --no-bundle
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: cc-switch-4.0.18-minimax-fix-windows-x64
+          path: source/src-tauri/target/release/cc-switch.exe
+          if-no-files-found: error
+          retention-days: 7
