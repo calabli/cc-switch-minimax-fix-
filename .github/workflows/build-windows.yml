@@ -67,11 +67,8 @@ jobs:
           workspaces: source/src-tauri -> target
 
       - name: Setup pnpm
-        run: |
-          corepack enable
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          corepack install
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        timeout-minutes: 5
+        run: npm install --global --force --no-audit --no-fund https://registry.npmjs.org/pnpm/-/pnpm-10.12.3.tgz
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
